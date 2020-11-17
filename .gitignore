@@ -1,0 +1,23 @@
+# Compiled/cached Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Temporaries
+.ipynb_checkpoints/
+*.swp
+
+# Outputs
+*.svg
+*.eps
+*.out
+*.mat
+*.bmp
+*.ckpt
+# Model and other data
+*.pth
+*.npy
+.idea
+*.DS_Store
+
+lightning_logs/
