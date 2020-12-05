@@ -31,4 +31,4 @@ class IhdpDataset(Dataset):
 
     def __getitem__(self, item):
         t, y, y_cf, x = self.t[item], self.y[item], self.y_cf[item], self.x[item]
-        return x, t, y
+        return x, t, y, y_cf

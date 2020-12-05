@@ -53,7 +53,7 @@ class DragonNet(LightningModule):
 
     def training_step(self, batch, batch_idx):
 
-        x, treatment, y_true = batch
+        x, treatment, y_true, y_cf_true = batch
         outputs = self.forward(x)
         epsilons = self.epsilon_module(outputs["propensity_score"])
         loss = self.loss(
