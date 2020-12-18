@@ -32,3 +32,5 @@ class IhdpDataset(Dataset):
     def __getitem__(self, item):
         t, y_f, y_cf, x = self.t[item], self.y_f[item], self.y_cf[item], self.x[item]
         return x, t, y_f, y_cf
+
+def iterate_sim
