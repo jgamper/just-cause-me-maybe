@@ -1,0 +1,1 @@
+from causememaybe.toy.generate_toy import DataGeneratingProcess
