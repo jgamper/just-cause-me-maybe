@@ -4,10 +4,18 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import MaxAbsScaler
 import pandas as pd
 
-m_0_func = lambda X, G: -0.2 + 0.1/(1+np.exp(-1*X[:,0])) + 0.8 * np.sin(X[:,1]) + 0.8 * G
-m_1_func = lambda X, G: -0.1 + 0.1*X[:,0]**2 - 0.2 * np.sin(X[:,1]) - 0.85 * (1 - G)
-alpha_0_func = lambda X, G: np.exp(0.7-1.8*X[:,0] + 0.8 * X[:,1])
-alpha_1_func = lambda X, G: np.exp(0.9-0.5*X[:,0] + 0.5*X[:,1])
+m_0_func = (
+    lambda X, G: -0.2
+    + 0.1 / (1 + np.exp(-1 * X[:, 0]))
+    + 0.8 * np.sin(X[:, 1])
+    + 0.8 * G
+)
+m_1_func = (
+    lambda X, G: -0.1 + 0.1 * X[:, 0] ** 2 - 0.2 * np.sin(X[:, 1]) - 0.85 * (1 - G)
+)
+alpha_0_func = lambda X, G: np.exp(0.7 - 1.8 * X[:, 0] + 0.8 * X[:, 1])
+alpha_1_func = lambda X, G: np.exp(0.9 - 0.5 * X[:, 0] + 0.5 * X[:, 1])
+
 
 def sample_gompertz(
     x, shape_parameter_alpha=-1, scale_parameter_lambda=1, beta=np.array([1, -0.2])
@@ -37,7 +45,8 @@ def sample_gompertz(
     )
     return (1 / shape_parameter_alpha) * np.log(square_brackets)
 
-def sample_weidbull(
+
+def sample_weibull(
     x, scale_parameter_lambda=1200, shape_parameter_alpha=2, median=False
 ):
     """
@@ -64,7 +73,7 @@ def sample_weidbull(
     if median == True:
         numerator = -1 * np.log(0.5)
     denominator = scale_parameter_lambda * np.exp(x)
-    return (numerator / denominator)**(1/shape_parameter_alpha)
+    return (numerator / denominator) ** (1 / shape_parameter_alpha)
 
 
 def generate_factual(df):
@@ -96,7 +105,7 @@ class DataGeneratingProcess:
         random_state: int = 0,
         censoring_rate: float = 2.5,
         overlap: str = "random",
-        proportional_hazards: bool = True
+        proportional_hazards: bool = True,
     ):
         """
 
@@ -116,9 +125,9 @@ class DataGeneratingProcess:
         self.censoring_rate = censoring_rate
         self.overlap = overlap
         if self.overlap != "random":
-            self._propensity_scale = {"strong": 0.5,
-                                      "moderate": 2,
-                                      "weak": 4}[self.overlap]
+            self._propensity_scale = {"strong": 0.5, "moderate": 2, "weak": 4}[
+                self.overlap
+            ]
         self.proportional_hazards = proportional_hazards
         self._initialise_dataset()
 
@@ -146,7 +155,7 @@ class DataGeneratingProcess:
                 "y_control": self.y_control,
                 "c": self.c,
                 "mu_test": self.mu_test,
-                "mu_control": self.mu_control
+                "mu_control": self.mu_control,
             }
         )
         self.df = generate_factual(self.df)
@@ -163,7 +172,7 @@ class DataGeneratingProcess:
             self.clf = LogisticRegression()
             self.clf.fit(self.X, self.latent_binary_confounder)
             # Set hard coefficients
-            self.clf.coef_ = np.array([[ 1.18, -1.76]]) * self._propensity_scale
+            self.clf.coef_ = np.array([[1.18, -1.76]]) * self._propensity_scale
             self.clf.intercept_ = 0.00765551
             treatment_prob = self.clf.predict_proba(self.X)[:, 1]
             treatment = np.random.binomial(n=1, p=treatment_prob)
@@ -173,17 +182,17 @@ class DataGeneratingProcess:
         if treatment == "test":
             x = m_1_func(self.X, self.latent_binary_confounder)
             alpha = 2 if self.proportional_hazards else alpha_1_func(self.X, self.latent_binary_confounder)
-            y = sample_weidbull(x,
-                                shape_parameter_alpha=alpha,
-                                scale_parameter_lambda=2,
-                                median=median)
+
+            y = sample_weibull(
+                x, shape_parameter_alpha=alpha, scale_parameter_lambda=2, median=median
+            )
         elif treatment == "control":
             x = m_0_func(self.X, self.latent_binary_confounder)
             alpha = 2 if self.proportional_hazards else alpha_0_func(self.X, self.latent_binary_confounder)
-            y = sample_weidbull(x,
-                                shape_parameter_alpha=alpha,
-                                scale_parameter_lambda=2,
-                                median=median)
+
+            y = sample_weibull(
+                x, shape_parameter_alpha=alpha, scale_parameter_lambda=2, median=median
+            )
         else:
             raise AssertionError("Wrong treatment specified: {}".format(treatment))
         return y
