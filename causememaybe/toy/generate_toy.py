@@ -17,33 +17,20 @@ alpha_0_func = lambda X, G: np.exp(0.7 - 1.8 * X[:, 0] + 0.8 * X[:, 1])
 alpha_1_func = lambda X, G: np.exp(0.9 - 0.5 * X[:, 0] + 0.5 * X[:, 1])
 
 
-def sample_gompertz(
-    x, shape_parameter_alpha=-1, scale_parameter_lambda=1, beta=np.array([1, -0.2])
+def true_survival_func(
+    x: np.ndarray,
+    values: np.ndarray,
+    scale_parameter_lambda: float,
+    shape_parameter_alpha: float,
 ):
     """
-    Generates survival data according to:
-    @article{bender2005generating,
-        title={Generating survival times to simulate Cox proportional hazards models},
-        author={Bender, Ralf and Augustin, Thomas and Blettner, Maria},
-        journal={Statistics in medicine},
-        volume={24},
-        number={11},
-        pages={1713--1723},
-        year={2005},
-        publisher={Wiley Online Library}
-        }
-    PDF: https://www.econstor.eu/bitstream/10419/31002/1/483869465.PDF
+    Generates true survival curve for the weibull distribution
     :param x:
-    :param shape_parameter_alpha: alpha \in \{-\infty, +\infty}
-    :param scale_parameter_lambda: lambda > 0
-    :param beta:
+    :param values:
     :return:
     """
-    u = np.log(np.random.uniform(0, 1, x.shape[0]))
-    square_brackets = 1 - (shape_parameter_alpha * u) / (
-        scale_parameter_lambda * np.exp(np.dot(x, beta))
-    )
-    return (1 / shape_parameter_alpha) * np.log(square_brackets)
+    lam = scale_parameter_lambda * np.exp(x)
+    return np.exp(-1 * lam[:, np.newaxis] * values ** shape_parameter_alpha)
 
 
 def sample_weibull(
@@ -181,14 +168,22 @@ class DataGeneratingProcess:
     def sample_outcomes(self, treatment: str, median=False):
         if treatment == "test":
             x = m_1_func(self.X, self.latent_binary_confounder)
-            alpha = 2 if self.proportional_hazards else alpha_1_func(self.X, self.latent_binary_confounder)
+            alpha = (
+                2
+                if self.proportional_hazards
+                else alpha_1_func(self.X, self.latent_binary_confounder)
+            )
 
             y = sample_weibull(
                 x, shape_parameter_alpha=alpha, scale_parameter_lambda=2, median=median
             )
         elif treatment == "control":
             x = m_0_func(self.X, self.latent_binary_confounder)
-            alpha = 2 if self.proportional_hazards else alpha_0_func(self.X, self.latent_binary_confounder)
+            alpha = (
+                2
+                if self.proportional_hazards
+                else alpha_0_func(self.X, self.latent_binary_confounder)
+            )
 
             y = sample_weibull(
                 x, shape_parameter_alpha=alpha, scale_parameter_lambda=2, median=median
@@ -196,3 +191,30 @@ class DataGeneratingProcess:
         else:
             raise AssertionError("Wrong treatment specified: {}".format(treatment))
         return y
+
+    def generate_survival_curves_per_sample(self, treatment: str, t_min: float, t_max: float, size: int):
+        assert treatment in ["test", "control"], "Wrong treatment specified: {}".format(treatment)
+        if treatment == "test":
+            x = m_1_func(self.X, self.latent_binary_confounder)
+            alpha = (
+                2
+                if self.proportional_hazards
+                else alpha_1_func(self.X, self.latent_binary_confounder)
+            )
+
+        elif treatment == "control":
+            x = m_0_func(self.X, self.latent_binary_confounder)
+            alpha = (
+                2
+                if self.proportional_hazards
+                else alpha_0_func(self.X, self.latent_binary_confounder)
+            )
+
+        survival = true_survival_func(
+            x,
+            np.linspace(t_min, t_max, size),
+            scale_parameter_lambda=2,
+            shape_parameter_alpha=alpha,
+        )
+
+        return survival
