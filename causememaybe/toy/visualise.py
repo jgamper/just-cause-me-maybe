@@ -3,10 +3,10 @@ from matplotlib.lines import Line2D
 from matplotlib.legend import Legend
 import networkx as nx
 import numpy as np
-from causememaybe.toy.generate_toy import DataGeneratingProcess
+from causememaybe.toy.survival import SurvivalToyProcess
 
 
-def plot_dataset(dgp: DataGeneratingProcess):
+def plot_dataset(dgp: SurvivalToyProcess):
     """
     Illiustrates our dataset
     :param dgp:
@@ -45,7 +45,7 @@ def plot_dataset(dgp: DataGeneratingProcess):
     return fig, ax
 
 
-def plot_treatment(dgp: DataGeneratingProcess):
+def plot_treatment(dgp: SurvivalToyProcess):
     """
     Plots the treatment assignment and propensity score density
     :param dgp:

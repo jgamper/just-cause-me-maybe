@@ -1,131 +1,220 @@
-import torch
-from torch import nn
-import pandas as pd
-from typing import Tuple, Optional
-from torch.utils.data import DataLoader, TensorDataset
-from pycox.preprocessing.label_transforms import LabTransDiscreteTime
-from pycox.models.loss import NLLLogistiHazardLoss
-from causememaybe.mlp import make_mlp
 import numpy as np
+from sklearn.datasets import make_moons
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import MaxAbsScaler
+import pandas as pd
+
+m_0_func = (
+    lambda X, G: -0.2
+    + 0.1 / (1 + np.exp(-1 * X[:, 0]))
+    + 0.8 * np.sin(X[:, 1])
+    + 0.8 * G
+)
+m_1_func = (
+    lambda X, G: -0.1 + 0.1 * X[:, 0] ** 2 - 0.2 * np.sin(X[:, 1]) - 0.85 * (1 - G)
+)
+alpha_0_func = lambda X, G: np.exp(0.7 - 1.8 * X[:, 0] + 0.8 * X[:, 1])
+alpha_1_func = lambda X, G: np.exp(0.9 - 0.5 * X[:, 0] + 0.5 * X[:, 1])
 
 
-def split_dataset(df_train: pd.DataFrame) -> Tuple[pd.DataFrame]:
+def true_survival_func(
+    x: np.ndarray,
+    values: np.ndarray,
+    scale_parameter_lambda: float,
+    shape_parameter_alpha: float,
+):
     """
-    Returns a dataset split into train, test
-    :param name:
+    Generates true survival curve for the weibull distribution
+    :param x:
+    :param values:
     :return:
     """
-    df_test = df_train.sample(frac=0.2)
-    df_train = df_train.drop(df_test.index)
-    df_val = df_train.sample(frac=0.2)
-    df_train = df_train.drop(df_val.index)
-    return df_train, df_val, df_test
+    lam = scale_parameter_lambda * np.exp(x)
+    return np.exp(-1 * lam[:, np.newaxis] * values ** shape_parameter_alpha)
 
 
-def get_labels(
-    duration, events, labtrans: Optional[LabTransDiscreteTime]
-) -> Tuple[torch.Tensor]:
+def sample_weibull(
+    x, scale_parameter_lambda=1200, shape_parameter_alpha=2, median=False
+):
     """
-    Preprocess targets (we end up with two targets: duration and event).
-    Time is discretized into `num_duration` equidistant points.
-    :param duration: time-to-event data
-    :param events: indicator function if censored or not
-    :param labtrans: discrete label transformation object
+    Generates survival data according to:
+    @article{bender2005generating,
+        title={Generating survival times to simulate Cox proportional hazards models},
+        author={Bender, Ralf and Augustin, Thomas and Blettner, Maria},
+        journal={Statistics in medicine},
+        volume={24},
+        number={11},
+        pages={1713--1723},
+        year={2005},
+        publisher={Wiley Online Library}
+        }
+    PDF: https://www.econstor.eu/bitstream/10419/31002/1/483869465.PDF
+    :param x:
+    :param shape_parameter_alpha: alpha \in \{-\infty, +\infty}
+    :param scale_parameter_lambda: lambda > 0
+    :param median: used for median time computation
     :return:
     """
-    if labtrans != None:
-        y = labtrans.fit_transform(duration, events)
-        y_duration = torch.from_numpy(y[0])
-        y_event = torch.from_numpy(y[1])
-        return y_duration, y_event
-    else:
-        return torch.from_numpy(duration), torch.from_numpy(events)
+    if median == False:
+        numerator = -1 * np.log(np.random.uniform(0, 1, x.shape[0]))
+    if median == True:
+        numerator = -1 * np.log(0.5)
+    denominator = scale_parameter_lambda * np.exp(x)
+    return (numerator / denominator) ** (1 / shape_parameter_alpha)
 
 
-def get_dataset(
-    df: pd.DataFrame, batch_size: int, labtrans: Optional[LabTransDiscreteTime]
-) -> Tuple[DataLoader, torch.Tensor, pd.DataFrame]:
-    """
-    Converts dataframe into train, valid and test dataloaders
-    :param df:
-    :param batch_size:
-    :param labtrans:
-    :return:
-    """
-    df_train, df_val, df_test = split_dataset(df)
-
-    # Preprocess featuers
-    x_train, x_val, x_test = [
-        torch.from_numpy(df[["x0", "x1"]].to_numpy().astype("float32"))
-        for df in [df_train, df_val, df_test]
-    ]
-
-    # Get treatment indicator
-    a_train, a_val, a_test = [
-        torch.from_numpy(df.treatment_assignment.to_numpy())
-        for df in [df_train, df_val, df_test]
-    ]
-
-    # Get labels
-    y_train_duration, y_train_event = get_labels(
-        df_train.observed.values, df_train.delta.values, labtrans
-    )
-    y_val_duration, y_val_event = get_labels(
-        df_val.observed.values, df_val.delta.values, labtrans
-    )
-    y_test_duration, y_test_event = get_labels(
-        df_test.observed.values, df_test.delta.values, labtrans
-    )
-
-    # Make dataloader for training set
-    train_dataset = TensorDataset(x_train, y_train_duration, y_train_event, a_train)
-    train_dataloader = DataLoader(train_dataset, batch_size, shuffle=True)
-
-    val_dataset = TensorDataset(x_val, y_val_duration, y_val_event, a_val)
-    val_dataloader = DataLoader(val_dataset, batch_size, shuffle=False)
-
-    test_dataset = TensorDataset(x_test, y_test_duration, y_test_event, a_test)
-    test_dataloader = DataLoader(test_dataset, batch_size, shuffle=False)
-
-    return train_dataloader, val_dataloader, test_dataloader, df_train, df_val, df_test
-
-
-def output2surv(output: torch.Tensor, epsilon: float = 1e-7) -> torch.Tensor:
-    """Transform a network output tensor to discrete survival estimates.
-    Ref: LogisticHazard
-    """
-    hazards = output.sigmoid()
-    return hazard2surv(hazards, epsilon)
-
-
-def hazard2surv(hazard: torch.Tensor, epsilon: float = 1e-7) -> torch.Tensor:
-    """Transform discrete hazards to discrete survival estimates.
-    Ref: LogisticHazard
-    """
-    return (1 - hazard).add(epsilon).log().cumsum(1).exp()
-
-
-class SurvivalDragon(nn.Module):
-    def __init__(self, out_size: int):
-        super(SurvivalDragon, self).__init__()
-        self.encoder = make_mlp(1, [(2, 2)], include_bn=False, final_activation=nn.ReLU)
-        self.loss_func = NLLLogistiHazardLoss()
-        self.survival_decoders = self.make_survival_decoders(out_size)
-
-    def make_survival_decoders(self, out_size):
-        decoders = []
-        for i in range(2):
-            mlp = make_mlp(1, [(2, out_size)], include_bn=False)
-            decoders.append(mlp)
-        return nn.ModuleList(decoders)
-
-    def forward(self, x):
-        features = self.encoder(x)
-        y0 = self.survival_decoders[0](features)
-        y1 = self.survival_decoders[1](features)
-        if hasattr(self, "propensity_model"):
-            propensity_score = self.propensity_model(features)
+def generate_factual(df):
+    ys = []
+    indicators = []
+    for id, row in df.iterrows():
+        t = row["treatment_assignment"]
+        y1 = row["y_test"]
+        y0 = row["y_control"]
+        c = row["c"]
+        if t:
+            y = np.min([y1, c])
+            indi = np.argmin([y1, c])
         else:
-            propensity_score = None
+            y = np.min([y0, c])
+            indi = np.argmin([y0, c])
+        ys.append(y)
+        indicators.append(indi)
+    df["observed"] = np.array(ys)
+    df["delta"] = np.array(indicators)
+    return df
 
-        return features, [y0, y1], propensity_score
+
+class SurvivalToyProcess:
+    def __init__(
+        self,
+        n_samples: int = 5000,
+        noise: float = 0.4,
+        random_state: int = 0,
+        censoring_rate: float = 2.5,
+        overlap: str = "random",
+        proportional_hazards: bool = True,
+    ):
+        """
+
+        :param n_samples:
+        :param noise:
+        :param random_state:
+        :param censoring_rate: one of [2.5, 0.5] 2 corresponds to smaller censoring
+        :param overlap: one of ["random", "strong", "moderate", "weak"]
+        :param proportional_hazards: if False then weibull scale paramter is a function of covariates
+        """
+        assert overlap in ["random", "strong", "moderate", "weak"]
+        if censoring_rate not in [2.5, 0.5]:
+            print("Check the impact your censoring rate might have!")
+        self.n_samples = n_samples
+        self.noise = (noise,)
+        self.random_state = random_state
+        self.censoring_rate = censoring_rate
+        self.overlap = overlap
+        if self.overlap != "random":
+            self._propensity_scale = {"strong": 0.5, "moderate": 2, "weak": 4}[
+                self.overlap
+            ]
+        self.proportional_hazards = proportional_hazards
+        self._initialise_dataset()
+
+    def _initialise_dataset(self):
+        X, latent_factor = make_moons(
+            n_samples=self.n_samples, noise=self.noise, random_state=self.random_state
+        )
+        X = MaxAbsScaler().fit_transform(X)
+        self.X = X
+        self.latent_binary_confounder = latent_factor
+        self.y_test = self.sample_outcomes("test")
+        self.y_control = self.sample_outcomes("control")
+        self.c = self._censoring_process()
+        self.treatment, self.treatment_prob = self._treatment_process()
+        self.mu_control = self.sample_outcomes("control", median=True)
+        self.mu_test = self.sample_outcomes("test", median=True)
+        self.df = pd.DataFrame(
+            {
+                "x0": self.X[:, 0],
+                "x1": self.X[:, 1],
+                "latent_binary_confounder": self.latent_binary_confounder,
+                "treatment_assignment": self.treatment,
+                "true_treatment_prob": self.treatment_prob,
+                "y_test": self.y_test,
+                "y_control": self.y_control,
+                "c": self.c,
+                "mu_test": self.mu_test,
+                "mu_control": self.mu_control,
+            }
+        )
+        self.df = generate_factual(self.df)
+
+    def _censoring_process(self):
+        c = np.random.exponential(scale=self.censoring_rate, size=self.X.shape[0])
+        return c
+
+    def _treatment_process(self):
+        if self.overlap == "random":
+            treatment = np.random.randint(0, 2, size=self.X.shape[0])
+            return treatment, np.ones_like(treatment) * 0.5
+        else:
+            self.clf = LogisticRegression()
+            self.clf.fit(self.X, self.latent_binary_confounder)
+            # Set hard coefficients
+            self.clf.coef_ = np.array([[1.18, -1.76]]) * self._propensity_scale
+            self.clf.intercept_ = 0.00765551
+            treatment_prob = self.clf.predict_proba(self.X)[:, 1]
+            treatment = np.random.binomial(n=1, p=treatment_prob)
+            return treatment, treatment_prob
+
+    def sample_outcomes(self, treatment: str, median=False):
+        if treatment == "test":
+            x = m_1_func(self.X, self.latent_binary_confounder)
+            alpha = (
+                2
+                if self.proportional_hazards
+                else alpha_1_func(self.X, self.latent_binary_confounder)
+            )
+
+            y = sample_weibull(
+                x, shape_parameter_alpha=alpha, scale_parameter_lambda=2, median=median
+            )
+        elif treatment == "control":
+            x = m_0_func(self.X, self.latent_binary_confounder)
+            alpha = (
+                2
+                if self.proportional_hazards
+                else alpha_0_func(self.X, self.latent_binary_confounder)
+            )
+
+            y = sample_weibull(
+                x, shape_parameter_alpha=alpha, scale_parameter_lambda=2, median=median
+            )
+        else:
+            raise AssertionError("Wrong treatment specified: {}".format(treatment))
+        return y
+
+    def generate_survival_curves_per_sample(self, treatment: str, t_min: float, t_max: float, size: int):
+        assert treatment in ["test", "control"], "Wrong treatment specified: {}".format(treatment)
+        if treatment == "test":
+            x = m_1_func(self.X, self.latent_binary_confounder)
+            alpha = (
+                2
+                if self.proportional_hazards
+                else alpha_1_func(self.X, self.latent_binary_confounder)
+            )
+
+        elif treatment == "control":
+            x = m_0_func(self.X, self.latent_binary_confounder)
+            alpha = (
+                2
+                if self.proportional_hazards
+                else alpha_0_func(self.X, self.latent_binary_confounder)
+            )
+
+        survival = true_survival_func(
+            x,
+            np.linspace(t_min, t_max, size),
+            scale_parameter_lambda=2,
+            shape_parameter_alpha=alpha,
+        )
+
+        return survival

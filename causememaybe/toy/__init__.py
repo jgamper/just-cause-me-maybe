@@ -1,1 +1,2 @@
-from causememaybe.toy.generate_toy import DataGeneratingProcess
+from causememaybe.toy.survival import SurvivalToyProcess
+from causememaybe.toy.discrete import DiscreteToyProcess
