@@ -21,3 +21,6 @@ __pycache__/
 *.DS_Store
 
 lightning_logs/
+Jones_2004.csv
+Shedden_2008.csv
+Botling_2013.csv
