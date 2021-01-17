@@ -7,12 +7,14 @@ import pandas as pd
 beta_0_func = lambda X: np.exp(0.7 - 0.3 * X[:, 0] + 0.8 * X[:, 1])
 beta_1_func = lambda X: np.exp(0.9 - 0.5 * X[:, 0] + 0.5 * X[:, 1])
 
+
 def sample_rho(size, g, alphas, betas, g_coef: float = 0.2):
     ones = np.ones(size)
     rho = np.random.beta(alphas, betas, size=size)
-    rho = np.vstack([rho + g_coef*g, ones]).transpose()
+    rho = np.vstack([rho + g_coef * g, ones]).transpose()
     rho = np.min(rho, axis=1)
     return rho
+
 
 def generate_factual(df):
     ys = []
@@ -58,7 +60,9 @@ class DiscreteToyProcess:
         self.X = X
         self.latent_binary_confounder = latent_factor
         self.y_test, self.rho_test, self.mu_test = self.sample_outcomes("test")
-        self.y_control, self.rho_control, self.mu_control = self.sample_outcomes("control")
+        self.y_control, self.rho_control, self.mu_control = self.sample_outcomes(
+            "control"
+        )
         self.treatment, self.treatment_prob = self._treatment_process()
         self.df = pd.DataFrame(
             {
@@ -72,7 +76,7 @@ class DiscreteToyProcess:
                 "mu_test": self.mu_test,
                 "mu_control": self.mu_control,
                 "rho_test": self.rho_test,
-                "rho_control": self.rho_control
+                "rho_control": self.rho_control,
             }
         )
         self.df = generate_factual(self.df)
@@ -97,12 +101,16 @@ class DiscreteToyProcess:
             betas = beta_1_func(self.X)
             alpha = 3
             alphas = np.ones(size) * alpha
-            rho = sample_rho(size, self.latent_binary_confounder, alphas, betas, g_coef=0.2)
+            rho = sample_rho(
+                size, self.latent_binary_confounder, alphas, betas, g_coef=0.2
+            )
         elif treatment == "control":
             betas = beta_1_func(self.X)
             alpha = 1
             alphas = np.ones(size) * alpha
-            rho = sample_rho(size, self.latent_binary_confounder, alphas, betas, g_coef=0.2)
+            rho = sample_rho(
+                size, self.latent_binary_confounder, alphas, betas, g_coef=0.2
+            )
 
         y = np.random.binomial(1, rho, size)
         mu = 1 / (1 + betas / alphas)

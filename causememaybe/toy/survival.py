@@ -192,8 +192,12 @@ class SurvivalToyProcess:
             raise AssertionError("Wrong treatment specified: {}".format(treatment))
         return y
 
-    def generate_survival_curves_per_sample(self, treatment: str, t_min: float, t_max: float, size: int):
-        assert treatment in ["test", "control"], "Wrong treatment specified: {}".format(treatment)
+    def generate_survival_curves_per_sample(
+        self, treatment: str, t_min: float, t_max: float, size: int
+    ):
+        assert treatment in ["test", "control"], "Wrong treatment specified: {}".format(
+            treatment
+        )
         if treatment == "test":
             x = m_1_func(self.X, self.latent_binary_confounder)
             alpha = (
