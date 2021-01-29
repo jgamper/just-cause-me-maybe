@@ -11,8 +11,8 @@ beta_1_func = lambda X: np.exp(0.9 - 0.5 * X[:, 0] + 0.5 * X[:, 1])
 def sample_rho(size, g, alphas, betas, coef: float = 0.2):
     ones = np.ones(size)
     rho_1 = np.random.beta(alphas, betas, size=size)
-    rho_2 = 0.65*g + 0.35*(1-g)
-    rho = (1-coef)*rho_1 + coef*rho_2
+    rho_2 = 0.65 * g + 0.35 * (1 - g)
+    rho = (1 - coef) * rho_1 + coef * rho_2
     rho = np.vstack([rho, ones]).transpose()
     rho = np.min(rho, axis=1)
     return rho
@@ -35,7 +35,7 @@ class DiscreteToyProcess:
         noise: float = 0.4,
         random_state: int = 0,
         overlap: str = "random",
-        coef: float = 0.2
+        coef: float = 0.2,
     ):
         """
 
@@ -118,5 +118,8 @@ class DiscreteToyProcess:
             )
 
         y = np.random.binomial(1, rho, size)
-        mu = 1 / (1 + betas / alphas) * (1-self.coef) + self.coef*self.latent_binary_confounder
+        mu = (
+            1 / (1 + betas / alphas) * (1 - self.coef)
+            + self.coef * self.latent_binary_confounder
+        )
         return y, rho, mu
