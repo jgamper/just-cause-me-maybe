@@ -168,3 +168,46 @@ class CEVAE(nn.Module):
         else:
             loss = torch.mean(l1 + l2 + l3 + l4 + l5 + l6)
         return -1*loss
+
+if __name__ == "__main__":
+    import numpy as np
+    from scipy.special import expit
+    from torch.optim import Adam
+    from tqdm import tqdm
+
+    N = 1000
+    sigma_0 = 3
+    sigma_1 = 5
+    Z = np.random.binomial(1, 0.5, size=(N))
+    X = np.random.normal(loc=Z, scale=(Z * sigma_1 ** 2 + (1 - Z) * sigma_0 ** 2))
+    T = np.random.binomial(1, 0.75 * Z + 0.25 * (1 - Z))
+    Y = np.random.binomial(1, expit(3 * (Z + 2 * (2 * T - 1))))
+
+
+    def sample_batch(z, x, t, y):
+        ind = np.random.randint(0, len(z), size=16)
+        return (i[ind, None].astype(np.float32) for i in [z, x, t, y])
+
+
+    cevae = CEVAE(features_dim=1, latent_confounder_dim=1, treatment_dim=1, outcome_dim=1)
+
+    optimizer = Adam(cevae.parameters())
+
+
+    def update():
+        optimizer.zero_grad()
+        z, x, t, y = sample_batch(Z, X, T, Y)
+        x, t, y = torch.from_numpy(x), torch.from_numpy(t), torch.from_numpy(y)
+        distributions = cevae(x, t, y)
+
+        loss = cevae.loss(distributions, x, t, y, negative_sampling=False)
+
+        loss.backward()
+        optimizer.step()
+        return loss, distributions
+
+
+    losses = []
+    for i in tqdm(range(100)):
+        l, dists = update()
+        losses.append(l)
