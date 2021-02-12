@@ -103,7 +103,7 @@ class QGuide(nn.Module):
         super(QGuide, self).__init__()
         self.q_t_x = Model(features_dim, treatment_dim, num_branches=1, binary=True, model_sigma=False)
         self.q_y_xt = Model(features_dim, outcome_dim, num_branches=2, binary=False, model_sigma=False)
-        self.q_z_tyx = Model(features_dim + 1, latent_confounder_dim, num_branches=2, binary=False, model_sigma=True)
+        self.q_z_tyx = Model(features_dim + 1, latent_confounder_dim, num_branches=2, binary=False, model_sigma=False)
 
     def forward(self, feature, treatment, outcome):
         q_z_tyx = self.q_z_tyx(torch.cat([feature, treatment], 1), outcome)
