@@ -9,6 +9,7 @@ beta_1_func = lambda X: np.exp(0.9 - 0.5 * X[:, 0] + 0.5 * X[:, 1])
 
 
 def sample_rho(size, g, alphas, betas, coef: float = 0.2):
+    # THIS NEEDS TO BE REDONE!
     ones = np.ones(size)
     rho_1 = np.random.beta(alphas, betas, size=size)
     rho_2 = 0.65*g + 0.35*(1-g)
@@ -110,7 +111,7 @@ class DiscreteToyProcess:
                 size, self.latent_binary_confounder, alphas, betas, coef=self.coef
             )
         elif treatment == "control":
-            betas = beta_1_func(self.X)
+            betas = beta_0_func(self.X)
             alpha = 1
             alphas = np.ones(size) * alpha
             rho = sample_rho(
